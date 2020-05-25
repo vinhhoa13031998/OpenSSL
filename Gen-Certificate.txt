@@ -1,0 +1,109 @@
+#!/bin/bash
+
+#Create a required
+domain_name=$1
+
+#Change information's request
+country=FR
+state=Val-de-Loire
+locality=Blois
+organization=Insa-CVL
+email=vinhhoa13031998@gmail.com
+commonname=Vinh-Hoa
+
+#file name:
+CACert="CACertificate.crt"
+CSR="${domain_name}.csr"
+CAkey="${domain_name}.key"
+CApublickey="public.key"
+RSAkey="CA.key"
+
+#option
+password=dummypassword
+CAserial=dummyCA
+
+if [ -z "$domain_name" ]; then
+	echo "Argument not present!"
+	echo " $0 [domain name]"
+	exit 99
+	
+fi
+
+echo "Generating key request and encrypt it for $domain_name !"
+
+##Generate new key
+echo "Generate a private-key"
+openssl genrsa -des3 -passout pass:$password -out $CAkey 1024
+
+#Remove passphrase from the key
+read -p "Do you want to remove the passphrase from CA Key [Y/n]?"
+if [ $REPLY = Y ]; then
+	{
+	openssl rsa -in $CAkey -out $CAkey -passin pass:$password
+	echo "Remove passhrase is completed"
+	##Create public key
+	echo "Creating public key from $CAkey private key"
+	openssl rsa -in $CAkey -pubout -out $CApublickey
+	}
+else 
+	{
+	echo "Keeping that CA key"
+	##Create public key
+	echo "Creating public key from $CAkey private key"
+	openssl rsa -in $CAkey -pubout -out $CApublickey -passin pass:$password
+	}
+fi
+
+
+##Generate Certificate signing request
+echo "Creating a CSR from $CAkey key"
+openssl req -new -key $CAkey -out $CSR -passin pass:$password -subj "/C=$country/ST=$state/L=$locality/O=$organization/CN=$commonname/emailAddress=$email" 
+
+#openssl req -in $CSR -text -noout
+
+##Create a CA
+echo "Creating a Certificate Authority from CA key $RSAkey"
+
+
+echo "Creating a self-signed CA with 1 year validation"
+openssl req -new -x509 -sha256 -newkey rsa:2048 -keyout $RSAkey -out $CACert -subj "/C=VN/ST=Center/L=HUE/O=BOSS-VN/CN=Family/emailAddress=Test@gmail.org" 
+
+
+##Signing 
+
+read -p "Enter your Certificate Authority serial :"
+CAserial=$REPLY
+
+if [ -z "$CAserial" ]; then
+	read -p "Please enter your CA serial, it is a serie of hexa number :"
+	CAserial=$REPLY
+fi
+
+#Create CA serial file
+read -p "Do you want to create CA serial file? [Y/n]"
+if [ $REPLY = Y ]; then
+	echo "Creating CA serial file"
+	echo $CAserial > serial.txt
+fi
+
+cat serial.txt
+echo "Signing your CSR to CA"
+openssl x509 -days 365 -CAserial serial.txt -CA $CACert -CAkey $RSAkey -in $CSR -req -out FileSign.crt
+
+
+
+
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
