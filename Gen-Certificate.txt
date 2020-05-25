@@ -11,12 +11,15 @@ organization=Insa-CVL
 email=vinhhoa13031998@gmail.com
 commonname=Vinh-Hoa
 
+
 #file name:
-CACert="CACertificate.crt"
+CACert="CA_Certificate.crt"
 CSR="${domain_name}.csr"
-CAkey="${domain_name}.key"
-CApublickey="public.key"
-RSAkey="CA.key"
+RSAkey="${domain_name}.key"
+RSApublickey="public.key"
+CAkey="CA.key"
+Signed_CSR="${domain_name}.signed"
+SerialCA="Serial.r"
 
 #option
 password=dummypassword
@@ -29,81 +32,102 @@ if [ -z "$domain_name" ]; then
 	
 fi
 
-echo "Generating key request and encrypt it for $domain_name !"
+function Generate_key {
+	echo "----Generating a private key"
+	openssl genrsa -des3 -passout pass:$password -out $RSAkey 1024
+}
 
-##Generate new key
-echo "Generate a private-key"
-openssl genrsa -des3 -passout pass:$password -out $CAkey 1024
+function Remove_passphrase {
+	echo "----Removing passphrase from <$RSAkey> private key"
+	openssl rsa -in $RSAkey -out $RSAkey -passin pass:$password
+	echo "  Done"
+}
 
-#Remove passphrase from the key
-read -p "Do you want to remove the passphrase from CA Key [Y/n]?"
-if [ $REPLY = Y ]; then
-	{
-	openssl rsa -in $CAkey -out $CAkey -passin pass:$password
-	echo "Remove passhrase is completed"
-	##Create public key
-	echo "Creating public key from $CAkey private key"
-	openssl rsa -in $CAkey -pubout -out $CApublickey
-	}
-else 
-	{
-	echo "Keeping that CA key"
-	##Create public key
-	echo "Creating public key from $CAkey private key"
-	openssl rsa -in $CAkey -pubout -out $CApublickey -passin pass:$password
-	}
-fi
+function Create_PublicKey_NOpass {
+	echo "----Creating puplic key $RSApublickey from $RSAkey private key"
+	openssl rsa -in $RSAkey -pubout -out $RSApublickey
+	echo "	Done"
+}
 
+function Create_PublicKey_pass {
+	echo "----Creating puplic key $RSApublickey from $RSAkey private key"
+	openssl rsa -in $RSAkey -passin pass:$password -pubout -out $RSApublickey
+	echo "	Done"
+}
 
-##Generate Certificate signing request
-echo "Creating a CSR from $CAkey key"
-openssl req -new -key $CAkey -out $CSR -passin pass:$password -subj "/C=$country/ST=$state/L=$locality/O=$organization/CN=$commonname/emailAddress=$email" 
+function Create_CSR {
+	echo "----Creating a Certificate signing request from <$RSAkey> private key and domain <$domain_name>"
+	openssl req -new -key $RSAkey -out $CSR -passin pass:$password -subj "/C=$country/ST=$state/L=$locality/O=$organization/CN=$commonname/emailAddress=$email"
+	echo "	Done"
+}
 
-#openssl req -in $CSR -text -noout
+function Create_CA {
+	echo "----Generating a Certificate Authority from CA key $CAkey"
+	echo "Creating a self-signed CA with <1 year validation>"
+	openssl req -new -x509 -sha256 -key $CAkey -out $CACert -subj "/C=VN/ST=Center/L=HUE/O=BOSS-VN/CN=Family/emailAddress=Test@gmail.org" 
+	echo "	Done"
+}
 
-##Create a CA
-echo "Creating a Certificate Authority from CA key $RSAkey"
+function Create_CA_key {
+	echo "----Creating CA key"
+	openssl genrsa -des3 -out $CAkey 2048
+	echo "	Done"
+}
 
-
-echo "Creating a self-signed CA with 1 year validation"
-openssl req -new -x509 -sha256 -newkey rsa:2048 -keyout $RSAkey -out $CACert -subj "/C=VN/ST=Center/L=HUE/O=BOSS-VN/CN=Family/emailAddress=Test@gmail.org" 
-
-
-##Signing 
-
-read -p "Enter your Certificate Authority serial :"
-CAserial=$REPLY
-
-if [ -z "$CAserial" ]; then
-	read -p "Please enter your CA serial, it is a serie of hexa number :"
+function file_CAserial {
+	read -p "----Enter your Certificate Authority serial :"
 	CAserial=$REPLY
+	if [ -z "$CAserial" ]; then
+		read -p "Please enter your CA serial, it is a serie of hexa number :"
+		CAserial=$REPLY
+	fi
+	echo "----Creating CA serial file"
+	echo $CAserial > $SerialCA
+	echo "	Done"
+}
+
+function Signing {
+	echo "Signing your CSR to CA"
+	openssl x509 -days 365 -CAserial $SerialCA -CA $CACert -CAkey $CAkey -in $CSR -req -out FileSign.crt
+	echo "	Done"
+}
+
+
+
+### Main function
+
+read -p "Generate a new private key [Y/n]?"
+
+if [ $REPLY = "Y" ]; then
+	Generate_key 2> dummy.file
+	read -p "Do you want to remove the passphrase from your private key [Y/n]? "
+	if [ $REPLY = "Y" ]; then
+		Remove_passphrase 2> dummy.file
+		Create_PublicKey_NOpass 2> dummy.file
+	else 
+		echo "Keeping the passphrase"
+		Create_PublicKey_pass 2> dummy.file
+	fi
 fi
 
-#Create CA serial file
-read -p "Do you want to create CA serial file? [Y/n]"
-if [ $REPLY = Y ]; then
-	echo "Creating CA serial file"
-	echo $CAserial > serial.txt
+read -p "Generate a new Certificate signing request [Y/n]? "
+if [ $REPLY = "Y" ]; then
+	Create_CSR 2> dummy.file
 fi
 
-cat serial.txt
-echo "Signing your CSR to CA"
-openssl x509 -days 365 -CAserial serial.txt -CA $CACert -CAkey $RSAkey -in $CSR -req -out FileSign.crt
+read -p "Do you want to generate a new Certificate Authority [Y/n]? "
+if [ $REPLY = "Y" ]; then
+	read -p "Using a new CA-serial and CA private key [Y/n]? "
+	if [ $REPLY = "Y" ]; then
+		file_CAserial
+		Create_CA_key 2> dummy.file
+	else 
+		echo "Using your old CA-serial and CA private key"
+	fi
+	Create_CA
+fi
 
-
-
-
-
-
-
-
-
-	
-
-
-
-
-
-
-
-
+read -p "Do you want to sign your CSR <$CSR> to the CA <$CACert> [Y/n]? "
+if [ $REPLY = "Y" ]; then
+	Signing
+fi
