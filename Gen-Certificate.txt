@@ -18,7 +18,7 @@ CSR="${domain_name}.csr"
 RSAkey="${domain_name}.key"
 RSApublickey="public.key"
 CAkey="CA.key"
-Signed_CSR="${domain_name}.signed"
+Signed_CA="CA_Signed.crt"
 SerialCA="Serial.r"
 
 #option
@@ -32,26 +32,34 @@ if [ -z "$domain_name" ]; then
 	
 fi
 
-function Generate_key {
+function Generate_RSA_key {
 	echo "----Generating a private key"
-	openssl genrsa -des3 -passout pass:$password -out $RSAkey 1024
-}
-
-function Remove_passphrase {
-	echo "----Removing passphrase from <$RSAkey> private key"
-	openssl rsa -in $RSAkey -out $RSAkey -passin pass:$password
+	openssl genrsa -des3 -passout pass:$password -out $RSAkey 2048
+	
+	read -p "Do you want to remove the passphrase from your private key [Y/n]? "
+	if [ $REPLY = "Y" ]; then
+		echo "----Removing passphrase of <$RSAkey> private key"
+		openssl rsa -in $RSAkey -out $RSAkey -passin pass:$password
+	else 
+		echo "----Keeping passphrase of $RSAkey> private key"
+	fi
 	echo "  Done"
 }
 
-function Create_PublicKey_NOpass {
-	echo "----Creating puplic key $RSApublickey from $RSAkey private key"
-	openssl rsa -in $RSAkey -pubout -out $RSApublickey
+function Generate_CA_key {
+	echo "----Creating CA key"
+	openssl genrsa -des3 -out $CAkey 2048
 	echo "	Done"
 }
 
-function Create_PublicKey_pass {
+
+function Create_PublicKey {
 	echo "----Creating puplic key $RSApublickey from $RSAkey private key"
-	openssl rsa -in $RSAkey -passin pass:$password -pubout -out $RSApublickey
+	if [ $password = "dummypassword" ]; then
+		openssl rsa -in $RSAkey -pubout -out $RSApublickey
+	else 
+		openssl rsa -in $RSAkey -passin pass:$password -pubout -out $RSApublickey
+	fi
 	echo "	Done"
 }
 
@@ -68,28 +76,33 @@ function Create_CA {
 	echo "	Done"
 }
 
-function Create_CA_key {
-	echo "----Creating CA key"
-	openssl genrsa -des3 -out $CAkey 2048
-	echo "	Done"
-}
 
-function file_CAserial {
+function Signing {
 	read -p "----Enter your Certificate Authority serial :"
 	CAserial=$REPLY
 	if [ -z "$CAserial" ]; then
 		read -p "Please enter your CA serial, it is a serie of hexa number :"
 		CAserial=$REPLY
 	fi
-	echo "----Creating CA serial file"
-	echo $CAserial > $SerialCA
+	read -p "Do you want to keep your CA serial [Y/n]?"
+	if [ $REPLY = "Y" ]; then
+		echo "----Creating CA serial file"
+		echo $CAserial > $SerialCA
+	fi
+	echo "	Done"
+	echo "Signing your CSR to CA"
+	openssl x509 -days 365 -CAserial $SerialCA -CA $CACert -CAkey $CAkey -in $CSR -req -out $Signed_CA
 	echo "	Done"
 }
 
-function Signing {
-	echo "Signing your CSR to CA"
-	openssl x509 -days 365 -CAserial $SerialCA -CA $CACert -CAkey $CAkey -in $CSR -req -out FileSign.crt
-	echo "	Done"
+function Verify {
+	echo "Verifying your certificate"
+	openssl verify -CAfile $CACert $Signed_CA
+}
+
+function Encrypte_file {
+	#read -p "Enter your address file that you want to encrypt"
+	openssl enc -aes-256-cbc -salt -in Test.txt -out SECRET_FILE.enc -pass file:./home/$(whoami)/Desktop/BashSSL/$RSAkey
 }
 
 
@@ -99,15 +112,17 @@ function Signing {
 read -p "Generate a new private key [Y/n]?"
 
 if [ $REPLY = "Y" ]; then
-	Generate_key 2> dummy.file
-	read -p "Do you want to remove the passphrase from your private key [Y/n]? "
-	if [ $REPLY = "Y" ]; then
-		Remove_passphrase 2> dummy.file
-		Create_PublicKey_NOpass 2> dummy.file
-	else 
-		echo "Keeping the passphrase"
-		Create_PublicKey_pass 2> dummy.file
-	fi
+	Generate_RSA_key
+fi
+
+#read -p "Generate a new Certificate authority key [Y/n]?"
+#if [ $REPLY = "Y" ]; then
+#	Create_CA_key 2> dummy.file
+#fi
+
+read -p "Create a public key from your RSA_private key [Y/n]?"
+if [ $REPLY = "Y" ]; then
+	Create_PublicKey 2> dummy.file
 fi
 
 read -p "Generate a new Certificate signing request [Y/n]? "
@@ -117,12 +132,11 @@ fi
 
 read -p "Do you want to generate a new Certificate Authority [Y/n]? "
 if [ $REPLY = "Y" ]; then
-	read -p "Using a new CA-serial and CA private key [Y/n]? "
+	read -p "Using a new CA private key for your Authority [Y/n]? "
 	if [ $REPLY = "Y" ]; then
-		file_CAserial
-		Create_CA_key 2> dummy.file
+		Generate_CA_key
 	else 
-		echo "Using your old CA-serial and CA private key"
+		echo "Using your old CA private key"
 	fi
 	Create_CA
 fi
@@ -131,3 +145,7 @@ read -p "Do you want to sign your CSR <$CSR> to the CA <$CACert> [Y/n]? "
 if [ $REPLY = "Y" ]; then
 	Signing
 fi
+
+read -p " Verify your Certificate [Y/n]? "
+Verify
+
