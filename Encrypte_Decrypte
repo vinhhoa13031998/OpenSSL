@@ -1,1 +1,118 @@
+#!/bin/bash
+
+#Ecrypte a file
+
+function Encrypt_File {
+	# Enter address of file
+	read -p "Enter address of the file you want to encrypte : "
+
+	# Change address to that file
+	cd $REPLY
+
+	# Enter file name
+	read -p "File name you want to encrypt : "
+	file_name="$REPLY"
+	
+	# Address of key :
+	read -p "Enter address of the private key : "
+	RSA_key="$REPLY"
+	
+	read -p "Key file name :"
+	key_name="$REPLY"
+	
+	# Encrypt file 
+	openssl enc -aes-256-cbc -salt -in $file_name -out Secret_file.txt -pass file:$RSA_key/$key_name
+	echo "File have been encrypt	, Done!"
+}
+
+function Decrypt_File {
+	# Enter address of file
+	read -p "Enter address of the file you want to encrypte : "
+
+	# Change address to that file
+	cd $REPLY
+
+	# Enter file name
+	read -p "File name you want to decrypt : "
+	file_name="$REPLY"
+	
+	# Address of key :
+	read -p "Enter address of the private key : "
+	RSA_key="$REPLY"
+	
+	read -p "Key file name :"
+	key_name="$REPLY"
+	
+	# Decrypt file 
+	openssl enc -d -aes-256-cbc -in $file_name -out File_Decrypte.txt -pass file:$RSA_key/$key_name
+	echo "File have been decrypt, Done!"
+}
+
+function Sign_File {
+	# Enter address of file
+	read -p "Enter address of the file you want to sign : "
+
+	# Change address to that file
+	cd $REPLY
+
+	# Enter file name
+	read -p "File name you want to sign : "
+	file_name="$REPLY"
+	
+	# Address of key :
+	read -p "Enter address of the private key : "
+	RSA_key="$REPLY"
+	
+	read -p "Key file name :"
+	key_name="$REPLY"
+	
+	# sign file 
+	openssl dgst -sha256 -sign $RSA_key/$key_name -out /tmp/sign.sha256 $file_name
+	# Imprint is stored temporarely in temporary folder 
+	
+	openssl base64 -in /tmp/sign.sha256 -out Signed_file.txt
+	echo "File have been signed, Done!"
+}
+
+function Verify_Signed_file {
+ 	# Enter address of file
+	read -p "Enter address of the file you want to sign : "
+
+	# Change address to that file
+	cd $REPLY
+
+	# Enter file name
+	read -p "File name you want to verify : "
+	file_name="$REPLY"
+	
+	# Address of public key :
+	read -p "Enter address of the public key : "
+	public_key="$REPLY"
+	
+	read -p "Key file name :"
+	key_name="$REPLY"
+	
+	# Verify signed file 
+	openssl base64 -d -in Signed_file.txt -out /tmp/sign.sha256
+	openssl dgst -sha256 -verify $public_key/$key_name -signature /tmp/sign.sha256 $file_name
+	
+}
+
+#main function
+read -p "You want to encrypt or decrypt a file [e/d/s] or not [n]?"
+if [ $REPLY = "e" ]; then
+	Encrypt_File
+elif [ $REPLY = "d" ]; then
+	Decrypt_File
+elif [ $REPLY = "s" ]; then
+	Sign_File
+else
+fi
+
+read -p "You want to verify the signature [Y/n]?"
+if [ $REPLY = "Y" ]; then
+	Verify_Signed_file
+fi
+
+
 
